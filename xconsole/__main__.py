@@ -2,6 +2,7 @@ import sys
 import commands
 import pexpect
 import ttyUSBID
+import os
 def find_in( s, first, last):
     try:
         start = s.index( first ) + len( first ) 
@@ -15,12 +16,16 @@ def find_in( s, first, last):
 def ssh_tty(host="",hostpass="",hostprom="~",ttyUSB="",force=False,log="",speed=115200,timeout=1*60):
     if ttyUSB == "" or host == "" or hostpass == "":
         return None,1
+    if ttyUSB.find("tty") == -1:
+        tty_serials,tty_dmesgs = ttyUSBID.get_ttydata_ssh(host,hostpass)
+        ttyUSB = ttyUSBID.id2tty(tty_serials,ttyUSB)
     tty = pexpect.spawn ("ssh -o 'StrictHostKeyChecking no' %s" %(host) ,timeout=300000)
-    tty.logfile_read = sys.stdout
+    #tty.logfile_read = sys.stdout
     if log != "":
         tty.logfile_read = open(log, 'a+')
     if tty.expect(["password",pexpect.EOF,pexpect.TIMEOUT],timeout=timeout) != 0:
         return None,2
+    tty.sendline(hostpass)
     if tty.expect([hostprom,pexpect.EOF,pexpect.TIMEOUT],timeout=timeout) != 0:
         return None,3
     if force:
@@ -29,6 +34,7 @@ def ssh_tty(host="",hostpass="",hostprom="~",ttyUSB="",force=False,log="",speed=
         tty.sendline("sudo echo %s" %(ttyUSB))
     if tty.expect(["password",pexpect.EOF,pexpect.TIMEOUT],timeout=timeout) != 0:
         return None,4
+    tty.sendline(hostpass)
     if tty.expect([hostprom,pexpect.EOF,pexpect.TIMEOUT],timeout=timeout) != 0:
         return None,5
     tty.sendline("sudo echo set line /dev/%s          > ./.kermit_%s" %(ttyUSB,ttyUSB))
@@ -45,11 +51,14 @@ def ssh_tty(host="",hostpass="",hostprom="~",ttyUSB="",force=False,log="",speed=
     tty.sendline("sudo kermit -c -y ./.kermit_%s;exit" %(ttyUSB))
     re = tty.expect(["--------","Locked by process",pexpect.EOF,pexpect.TIMEOUT],timeout=timeout)
     if re == 1:
-        print tty.before
+        print "Locked by process"
     return tty,re
 def local_tty(ttyUSB="",force=False,log="",speed=115200,timeout=1*60):
     if ttyUSB == "" :
         return None,1
+    if ttyUSB.find("tty") == -1:
+        tty_serials,tty_dmesgs = ttyUSBID.get_ttydata(host,hostpass)
+        ttyUSB = ttyUSBID.id2tty(tty_serials,ttyUSB)
     os.system("echo set line /dev/%s          > ./.kermit_%s" %(ttyUSB,ttyUSB))
     os.system("echo set speed %d             >> ./.kermit_%s" %(speed,ttyUSB))   
     os.system("echo set carrier-watch off    >> ./.kermit_%s" %(ttyUSB))     
@@ -64,18 +73,18 @@ def local_tty(ttyUSB="",force=False,log="",speed=115200,timeout=1*60):
     if force:
         os.system("sudo fuser -k /dev/%s" %(ttyUSB))
     tty = pexpect.spawn ("kermit -c -y ./.kermit_%s" %(ttyUSB) ,timeout=300000)
-    if log != 0:
+    if log != "":
         tty.logfile_read = open(log, 'a+')
     re=tty.expect(["--------","Locked by process",pexpect.EOF,pexpect.TIMEOUT],timeout=timeout)
     if re == 1 :
         print tty.before
     return tty,re
-def sol_tty(bmcip="",sol=""):
+def sol_tty(bmcip="",sol="",log=""):
     if bmcip == "" or sol == "":
         return None,1
-    os.system("ipmitool -H  %s -U ADMIN -P ADMIN -I lanplus sol deactivate instance=%s >/dev/null" %(bmcip,sol))
-    tty = pexpect.spawn ("ipmitool -H  %s -U ADMIN -P ADMIN -I lanplus sol activate instance=%s" %(bmcip,sol),timeout=300000)
-    if log != 0:
+    os.system("ipmitool -H%s -UADMIN -PADMIN -Ilanplus sol deactivate instance=%s" %(bmcip,sol))
+    tty = pexpect.spawn ("ipmitool -H%s -UADMIN -PADMIN -Ilanplus sol activate instance=%s" %(bmcip,sol),timeout=300000)
+    if log != "":
         tty.logfile_read = open(log, 'a+')
     return tty,0
 def tty(bmcip="",sol="",host="",hostpass="",hostprom="~",ttyUSB="",force=False,log="",speed=115200,timeout=20):
@@ -96,19 +105,7 @@ if __name__ == "__main__":
     sol=""
     tty = None
     if len(sys.argv) >= 2 :
-        if sys.argv[1].count(".") == 4:
-            bmcip = sys.argv[1]
-            if len(sys.argv) > 3:
-                log = sys.argv[3]
-            if len(sys.argv) > 2:
-                sol = sys.argv[2]
-                tty,err = sol_tty(bmcip=bmcip,sol=sol,log=log)
-        elif sys.argv[1].find("/dev") != -1 or len(sys.argv[1]) == 8:
-            ttyUSB = sys.argv[1]
-            if len(sys.argv) > 2:
-                log = sys.argv[2]
-                tty,err = local_tty(ttyUSB=ttyUSB,log=log)
-        elif sys.argv[1].find("@") != -1:
+        if sys.argv[1].find("@") != -1:
             host = sys.argv[1]
             if len(sys.argv) >  4:
                 log = sys.argv[4]
@@ -116,13 +113,21 @@ if __name__ == "__main__":
                 hostpass = sys.argv[2]
             if len(sys.argv) >  3:
                 ttyUSB = sys.argv[3]
-                print host
-                print hostpass
-                print ttyUSB
-                print log
                 tty,err = ssh_tty(host=host,hostpass=hostpass,ttyUSB=ttyUSB,log=log)
+        elif sys.argv[1].count(".") == 3:
+            bmcip = sys.argv[1]
+            if len(sys.argv) > 3:
+                log = sys.argv[3]
+            if len(sys.argv) > 2:
+                sol = sys.argv[2]
+                tty,err = sol_tty(bmcip=bmcip,sol=sol,log=log)
+        elif sys.argv[1].find("tty") != -1 or len(sys.argv[1]) == 8:
+            ttyUSB = sys.argv[1]
+            if len(sys.argv) > 2:
+                log = sys.argv[2]
+            tty,err = local_tty(ttyUSB=ttyUSB,log=log)
     if tty == None:
         print "Help"
     else:
-        #tty.interact()
+        tty.interact()
         sys.exit()

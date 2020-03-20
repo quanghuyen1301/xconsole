@@ -57,7 +57,7 @@ def local_tty(ttyUSB="",force=False,log="",speed=115200,timeout=1*60):
     if ttyUSB == "" :
         return None,1
     if ttyUSB.find("tty") == -1:
-        tty_serials,tty_dmesgs = ttyUSBID.get_ttydata(host,hostpass)
+        tty_serials,tty_dmesgs = ttyUSBID.get_ttydata()
         ttyUSB = ttyUSBID.id2tty(tty_serials,ttyUSB)
     os.system("echo set line /dev/%s          > ./.kermit_%s" %(ttyUSB,ttyUSB))
     os.system("echo set speed %d             >> ./.kermit_%s" %(speed,ttyUSB))   

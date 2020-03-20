@@ -3,16 +3,7 @@ import commands
 import pexpect
 import ttyUSBID
 import os
-def find_in( s, first, last):
-    try:
-        start = s.index( first ) + len( first ) 
-        if last =="":
-            end = len(s)
-        else:
-            end = s.index( last, start ) 
-        return s[start:end]
-    except ValueError:
-        return ""
+
 def ssh_tty(host="",hostpass="",hostprom="~",ttyUSB="",force=False,log="",speed=115200,timeout=1*60):
     if ttyUSB == "" or host == "" or hostpass == "":
         return None,1
